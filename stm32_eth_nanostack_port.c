@@ -73,10 +73,10 @@ static int8_t stm32_eth_phy_tx(uint8_t *data_ptr, uint16_t data_len, uint8_t tx_
 static void PHY_LinkStatus_Task(void *y);
 static void eth_if_lock(void);
 static void eth_if_unlock(void);
-static void stm32_eth_initialize(uint8_t *mac_addr);
+// betzw - NEEDED?!?: static void stm32_eth_initialize(uint8_t *mac_addr);
 static int8_t stm32_eth_send(const uint8_t *data_ptr, uint16_t data_len);
 // TODO: static void k64f_eth_receive(volatile enet_rx_bd_struct_t *bdPtr);
-static void update_read_buffer(void);
+// betzw - NEEDED?!?: static void update_read_buffer(void);
 // TODO: static void ethernet_event_callback(ENET_Type *base, enet_handle_t *handle, enet_event_t event, void *param);
 
 /* Callback function to notify stack about the readiness of the Eth module */
@@ -385,7 +385,7 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, int paramLen)
 
     bufferoffset = 0;
     q = paramBuffer;
-    byteslefttocopy = paramLen;
+    byteslefttocopy = len;
     payloadoffset = 0;
 
     if((paramBuffer != NULL) && (paramLen >= len)) {
@@ -431,7 +431,7 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, int paramLen)
         EthHandle.Instance->DMARPDR = 0;
     }
 
-    return paramLen - byteslefttocopy;
+    return len - byteslefttocopy;
 }
 
 
@@ -441,24 +441,27 @@ static void stm32_eth_arch_enable_interrupts(void)
     HAL_NVIC_EnableIRQ(ETH_IRQn);
 }
 
+#if 0 // betzw - NEEDED?!?
 static void stm32_eth_arch_disable_interrupts(void)
 {
     NVIC_DisableIRQ(ETH_IRQn);
 }
+#endif // 0
 
 
 /* Main data structure for keeping Eth module data */
 typedef struct Eth_Buf_Data_S {
-    /* Pointers to start addresses of TX/RX Buffer descriptor*/
-    // TODO: volatile enet_rx_bd_struct_t *rx_buf_desc_start_addr;
-    // TODO: volatile enet_tx_bd_struct_t *tx_buf_desc_start_addr;
+    /* Indexes of next RX Buffer descriptor*/
+	uint8_t rx_pos;
+
     /* Pointer to Buffers themselves */
-    uint8_t *rx_buf[ENET_RX_RING_LEN];
-    uint8_t *tx_buf[ENET_TX_RING_LEN];
+    uint8_t rx_buf[ENET_RX_RING_LEN][ETH_MAX_ETH_PAYLOAD];
 } Eth_Buf_Data_S;
 
 /* Global Variables */
-static Eth_Buf_Data_S base_DS;
+static Eth_Buf_Data_S base_DS = {
+		.tx_pos = 0
+};
 static uint8_t eth_driver_enabled = 0;
 static int8_t eth_interface_id = -1;
 static bool link_currently_up = false;
@@ -495,7 +498,10 @@ void arm_eth_phy_device_register(uint8_t *mac_ptr, void (*driver_status_cb)(uint
     }
 
     if (!eth_driver_enabled) {
-        stm32_eth_initialize(mac_ptr);
+    	stm32_eth_arch_low_level_init();
+#if !DEVICE_EMAC
+        stm32_eth_arch_enable_interrupts();
+#endif
         eth_driver_enabled = 1;
         driver_readiness_status_callback(link_currently_up, eth_interface_id);
 #ifdef MBED_CONF_RTOS_PRESENT
@@ -552,6 +558,7 @@ static int8_t stm32_eth_phy_interface_state_control(phy_interface_state_e state,
 }
 
 
+#if 0 // betzw - NEEDED?!?
 /** \brief  Function to update the RX buffer descriptors
  *
  *  Moves the pointer to next buffer descriptor. If its the end of the Ring, wraps
@@ -577,9 +584,10 @@ static void update_read_buffer(void)
     ENET->RDAR = ENET_RDAR_RDAR_MASK;
 #endif // 0
 }
+#endif // 0
 
 
-#if 0 // TODO
+#if 0 // betzw - NEEDED?!?
 /** \brief  Function to receive data packets
  *
  *  Reads the data from the buffer provided by the buffer descriptor and hands
@@ -588,8 +596,9 @@ static void update_read_buffer(void)
  *  \param[in] bdPtr  Pointer to the receive buffer descriptor structure
  *  \param[in] idx    Index of the current buffer descriptor
  */
-static void k64f_eth_receive(volatile enet_rx_bd_struct_t *bdPtr)
+static void stm32_eth_receive(volatile enet_rx_bd_struct_t *bdPtr)
 {
+#if 0 // TODO
     if (!(bdPtr->control & ENET_BUFFDESCRIPTOR_RX_ERR_MASK)) {
         /* Hand it over to Nanostack*/
         if (eth_device_driver.phy_rx_cb) {
@@ -597,10 +606,12 @@ static void k64f_eth_receive(volatile enet_rx_bd_struct_t *bdPtr)
                                                  0, eth_interface_id);
         }
     }
+#endif // 0
 }
 #endif // 0
 
 
+#if 0 // betzw- NEEDED?!?
 /** \brief  Function to reclaim used TX buffer descriptor
  *
  *  This function is called after a TX interrupt takes place. The interrupt will
@@ -624,6 +635,7 @@ static void tx_queue_reclaim(void)
     }
 #endif // 0
 }
+#endif // 0
 
 
 /** \brief  Function to send data packets
@@ -634,59 +646,28 @@ static void tx_queue_reclaim(void)
  *  \param[in] data_ptr  Pointer to the data buffer
  *  \param[in] data_len  Length of the data
  *
- *  \returns 0 if successfull, <0 if unsuccessful
+ *  \returns 0 if successful, -1 if unsuccessful
  */
 static int8_t stm32_eth_send(const uint8_t *data_ptr, uint16_t data_len)
 {
+	int ret;
+
     /*Sanity Check*/
     if (data_len > ETH_MAX_ETH_PAYLOAD) {
         tr_error("Packet size bigger than ETH_MAX_ETH_PAYLOAD.");
         return -1;
     }
 
-#if 0 // TODO
-    /* Get the index of the next TX descriptor */
-    uint8_t index = global_enet_handle.txBdCurrent - global_enet_handle.txBdBase;
-
-    /* Check if next descriptor is free - reclaim should have freed tx_buf */
-    if (base_DS.tx_buf[index]) {
-        tr_error("TX buf descriptors full. Can't queue packet.");
-        return -1;
-    }
-
-    uint8_t *buf_ptr = MEM_ALLOC(data_len + ENET_BUFF_ALIGNMENT);
-    if (!buf_ptr) {
-        tr_error("Alloc failed");
-        return -1;
-    }
-
-    // Protect against reclaim routine swallowing tx_buf before we set READY
+    // Get lock
     eth_if_lock();
-    base_DS.tx_buf[index] = buf_ptr;
-    uint8_t *aligned_ptr = ENET_BuffPtrAlign(buf_ptr);
-    memcpy(aligned_ptr, data_ptr, data_len);
 
-    /* Setup transfers */
-    global_enet_handle.txBdCurrent->buffer = aligned_ptr;
-    global_enet_handle.txBdCurrent->length = data_len;
-    global_enet_handle.txBdCurrent->control |=
-            (ENET_BUFFDESCRIPTOR_TX_READY_MASK
-                    | ENET_BUFFDESCRIPTOR_TX_LAST_MASK);
+    /* Setup transfer */
+    ret = stm32_eth_arch_low_level_output(data_ptr, data_len);
 
-    /* Increase the buffer descriptor address. */
-    if (global_enet_handle.txBdCurrent->control
-            & ENET_BUFFDESCRIPTOR_TX_WRAP_MASK) {
-        global_enet_handle.txBdCurrent = global_enet_handle.txBdBase;
-    } else {
-        global_enet_handle.txBdCurrent++;
-    }
+    // Release lock
     eth_if_unlock();
 
-    /* Active the transmit buffer descriptor. */
-    ENET->TDAR = ENET_TDAR_TDAR_MASK;
-#endif // 0
-
-    return 0;
+    return (ret == ERR_OK) ? 0 : -1;
 }
 
 
@@ -731,7 +712,9 @@ static int8_t stm32_eth_phy_address_write(phy_address_type_e address_type, uint8
 
     switch(address_type){
         case PHY_MAC_48BIT:
-        	stm32_set_mac_48bit(address_ptr); // betzw - WAS: stm32_eth_set_address(address_ptr);
+        	stm32_set_mac_48bit(address_ptr); /* betzw - WAS: stm32_eth_set_address(address_ptr);
+        	                                     But once initialized, we cannot change MAC address in the driver!?!
+        	 	 	 	 	 	 	 	 	   */
             break;
         case PHY_MAC_64BIT:
         case PHY_MAC_16BIT:
@@ -744,6 +727,21 @@ static int8_t stm32_eth_phy_address_write(phy_address_type_e address_type, uint8
 }
 
 
+static inline bool stm32_get_link_status() {
+    uint32_t status;
+    bool ret = false;
+
+    if (HAL_ETH_ReadPHYRegister(&EthHandle, PHY_BSR, &status) == HAL_OK) {
+        if (status & PHY_LINKED_STATUS) {
+        	ret = true;
+        } else if (!(status & PHY_LINKED_STATUS)) {
+        	ret = false;
+        }
+    }
+
+    return ret;
+}
+
 /** \brief  Task check the status of PHY link
  *
  *      This task PHY link status and tells the stack if the Eth cable is
@@ -753,147 +751,20 @@ static int8_t stm32_eth_phy_address_write(phy_address_type_e address_type, uint8
  */
 static void PHY_LinkStatus_Task(void *y)
 {
-#if 0 // TODO
     bool link = false;
 
     eth_if_lock();
-    PHY_GetLinkStatus(ENET, 0, &link);
+    link = stm32_get_link_status();
     if (link != link_currently_up) {
         link_currently_up = link;
-        if (link) {
-            phy_duplex_t phy_duplex;
-            phy_speed_t phy_speed;
-            PHY_GetLinkSpeedDuplex(ENET, 0, &phy_speed, &phy_duplex);
-            /* Poke the registers*/
-            ENET_SetMII(ENET, (enet_mii_speed_t)phy_speed, (enet_mii_duplex_t)phy_duplex);
-        }
         eth_if_unlock();
         driver_readiness_status_callback(link, eth_interface_id);
         tr_info ("Ethernet cable %s.", link ? "connected" : "unplugged");
     } else {
         eth_if_unlock();
     }
-#endif // 0
 
     eventOS_timeout_ms(PHY_LinkStatus_Task, 500, NULL);
-}
-
-
-/** \brief  Initialization function for Ethernet module.
- *
- *      This function initializes the ethernet module using default
- *      configuration. Link speed and duplex is auto-negotiated. It also sets up
- *      the buffer descriptors. If MAC address is setup later by the stack using
- *      stm32_eth_address_set() routine, that will just overwrite the MAC directly
- *      in Hardware registers.
- *
- *  \param[in] mac_addr Pointer to MAC address.
- *
- */
-static void stm32_eth_initialize(uint8_t *mac_addr)
-{
-#if 0 // TODO
-    uint32_t sysClock;
-    phy_speed_t phy_speed;
-    phy_duplex_t phy_duplex;
-    uint32_t phyAddr = 0;
-
-    enet_config_t config;
-
-
-    /* Allocate TX buffer descriptors */
-    void *memptr = MEM_ALLOC(
-            sizeof(enet_tx_bd_struct_t) * ENET_TX_RING_LEN + ENET_BUFF_ALIGNMENT);
-    if (!memptr) {
-        tr_error("Could not allocate memory for TX Buf Descriptors.");
-        return;
-    }
-    base_DS.tx_buf_desc_start_addr = ENET_BuffPtrAlign(memptr);
-    memset((enet_tx_bd_struct_t *) base_DS.tx_buf_desc_start_addr, 0,
-           sizeof(enet_tx_bd_struct_t) * ENET_TX_RING_LEN);
-
-    /* Allocate RX buffer descriptors */
-    memptr = MEM_ALLOC( sizeof(enet_rx_bd_struct_t) * ENET_RX_RING_LEN + ENET_BUFF_ALIGNMENT);
-    if (!memptr) {
-        tr_error("Could not allocate memory for RX Buf Descriptors");
-        return;
-    }
-    base_DS.rx_buf_desc_start_addr = ENET_BuffPtrAlign(memptr);
-    memset((enet_rx_bd_struct_t *) base_DS.rx_buf_desc_start_addr, 0,
-           sizeof(enet_rx_bd_struct_t) * ENET_RX_RING_LEN);
-
-    /* Allocate RX buffers in one contiguous block */
-    memptr = MEM_ALLOC(ENET_BuffSizeAlign(ENET_ETH_MAX_FLEN) * ENET_RX_RING_LEN + ENET_BUFF_ALIGNMENT);
-    if (!memptr) {
-        tr_error("Could not allocate memory for RX Buffers");
-        return;
-    }
-    base_DS.rx_buf[0] = ENET_BuffPtrAlign(memptr);
-
-    /* Fill in pointers to following buffers */
-    for (int i = 1; i < ENET_RX_RING_LEN; i++) {
-        base_DS.rx_buf[i] = base_DS.rx_buf[i-1] + ENET_BuffSizeAlign(ENET_ETH_MAX_FLEN);
-    }
-
-    /* Preparing the Buffer Configurations */
-    enet_buffer_config_t buf_config = {
-        .rxBdNumber = ENET_RX_RING_LEN,
-        .txBdNumber = ENET_TX_RING_LEN,
-        .rxBuffSizeAlign = ENET_BuffSizeAlign(ENET_ETH_MAX_FLEN),
-        .txBuffSizeAlign = 0,
-        .rxBdStartAddrAlign = base_DS.rx_buf_desc_start_addr,
-        .txBdStartAddrAlign = base_DS.tx_buf_desc_start_addr,
-        // it appears this is a wrongly-typed pointer to an array of buffer pointers
-        .rxBufferAlign = (uint8_t *) base_DS.rx_buf,
-        .txBufferAlign = NULL
-    };
-
-    /* Initialize the Ethernet Hardware */
-    initialize_enet_hardware();
-
-    /* Setup Clock for ENET module */
-    sysClock = CLOCK_GetFreq(kCLOCK_CoreSysClk);
-
-    /* Load the Default config (RMII Mode, Full Duplex, 100 Mbps)*/
-    ENET_GetDefaultConfig(&config);
-
-    /* Initialize PHY layer */
-    PHY_Init(ENET, phyAddr, sysClock);
-
-    /* Setup PHY layer */
-    PHY_GetLinkStatus(ENET, phyAddr, &link_currently_up);
-    tr_info("Ethernet cable is %sconnected.", link_currently_up ? "" : "not ");
-    if (link_currently_up) {
-        /* Get link information from PHY (Auto negotiation, in case deafult
-         * config is different from actual link available )  */
-        PHY_GetLinkSpeedDuplex(ENET, phyAddr, &phy_speed, &phy_duplex);
-        /* Change the MII speed and duplex for actual link status. */
-        config.miiSpeed = (enet_mii_speed_t) phy_speed;
-        config.miiDuplex = (enet_mii_duplex_t) phy_duplex;
-    }
-    config.rxMaxFrameLen = ENET_ETH_MAX_FLEN;
-    config.macSpecialConfig = kENET_ControlFlowControlEnable;
-    config.rxAccelerConfig = kENET_RxAccelMacCheckEnabled;
-    config.interrupt = kENET_RxFrameInterrupt | kENET_TxFrameInterrupt;
-
-    /* Initialize ENET module */
-    ENET_Init(ENET, &global_enet_handle, &config, &buf_config, mac_addr,
-              sysClock);
-
-    /* Adding Multicast Group
-     * Even ksdk 2.0 API is weird.
-     * ENET_AddMulticastGroup(ENET_Type *base, uint8_t *address),
-     * this routine will need 64 addresses to set a multicast group.
-     * So let's hack it. For more details->Kevin*/
-    ENET->GAUR = 0xFFFFFFFFu;
-    ENET->GALR = 0xFFFFFFFFu;
-
-    /* Setup callback for Interrupt routines */
-    ENET_SetCallback(&global_enet_handle, ethernet_event_callback, NULL);
-
-    /* Lastly, activate the module */
-    ENET_ActiveRead(ENET);
-#endif // 0
 }
 
 
@@ -929,15 +800,22 @@ static void eth_if_unlock(void)
  */
 static void enet_rx_task(void)
 {
-#if 0 // TODO
-    while (!(global_enet_handle.rxBdCurrent->control & ENET_BUFFDESCRIPTOR_RX_EMPTY_MASK)) {
-        k64f_eth_receive(global_enet_handle.rxBdCurrent);
-        update_read_buffer();
-    }
-#endif // 0
+	int len;
+
+	uint8_t buf_index = base_DS.rx_pos++;
+	base_DS.rx_pos %= ENET_RX_RING_LEN;
+
+	len = stm32_eth_arch_low_level_input(base_DS.rx_buf[buf_index], ETH_MAX_ETH_PAYLOAD);
+	if(len > 0) {
+		// call Nanostack callback
+        if (eth_device_driver.phy_rx_cb) {
+            eth_device_driver.phy_rx_cb(base_DS.rx_buf[buf_index], len, 0xff, 0, eth_interface_id);
+        }
+	}
 }
 
 
+#if 0 // betzw- NEEDED?!?
 /** \brief  Interrupt Service Routine for TX IRQ
  *      If Mbed RTOS is being used, this routine will be called from the
  *      Eth_IRQ_Thread (thread context) after receiving the signal from
@@ -947,41 +825,6 @@ static void enet_rx_task(void)
 static void enet_tx_task(void)
 {
     tx_queue_reclaim();
-}
-
-
-/** \brief  Callback function to receive Ethernet TX/RX Events
- *
- *  Called from the interrupt context. If we are not using mbed RTOS, we call up
- *  the ISRs, otherwise we send a corresponding signal to the responsible Thread.
- *
- *  \param[in] base  Pointer to base structure of Eth module
- *  \param[in] handle Pointer to global ethernet handle
- *  \param[in] event  Type of interrupt or any other event (what we have
- *             registered in init)
- *  \param[in] param A pointer to user provided data|parameter. [optional]
- */
-#if 0 // TODO
-static void ethernet_event_callback(ENET_Type *base, enet_handle_t *handle, enet_event_t event, void *param)
-{
-    switch (event) {
-        case kENET_RxEvent:
-#ifdef MBED_CONF_RTOS_PRESENT
-            osSignalSet(eth_irq_thread_id, SIG_RX);
-#else
-            enet_rx_task();
-#endif /*MBED_CONF_RTOS_PRESENT*/
-            break;
-        case kENET_TxEvent:
-#ifdef MBED_CONF_RTOS_PRESENT
-            osSignalSet(eth_irq_thread_id, SIG_TX);
-#else
-            enet_tx_task();
-#endif /*MBED_CONF_RTOS_PRESENT*/
-            break;
-        default:
-            break;
-    }
 }
 #endif // 0
 
@@ -1008,9 +851,11 @@ static void Eth_IRQ_Thread(const void *x)
             enet_rx_task();
         }
 
+#if 0 // betzw: NEEDED?!?
         if (event.value.signals & SIG_TX) {
             enet_tx_task();
         }
+#endif // 0
 
         eth_if_unlock();
     }
