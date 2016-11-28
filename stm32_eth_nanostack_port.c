@@ -30,6 +30,7 @@
 #ifdef MBED_CONF_RTOS_PRESENT
 #include "cmsis_os.h"
 #endif
+#include "mbed_error.h"
 #include "mbed_interface.h"
 
 #define ETH_ARCH_PHY_ADDRESS    (0x00)
@@ -74,10 +75,11 @@ static void PHY_LinkStatus_Task(void *y);
 static void eth_if_lock(void);
 static void eth_if_unlock(void);
 // betzw - NEEDED?!?: static void stm32_eth_initialize(uint8_t *mac_addr);
-static int8_t stm32_eth_send(const uint8_t *data_ptr, uint16_t data_len);
+static int8_t stm32_eth_send(uint8_t *data_ptr, uint16_t data_len);
 // TODO: static void k64f_eth_receive(volatile enet_rx_bd_struct_t *bdPtr);
 // betzw - NEEDED?!?: static void update_read_buffer(void);
 // TODO: static void ethernet_event_callback(ENET_Type *base, enet_handle_t *handle, enet_event_t event, void *param);
+__weak uint8_t mbed_otp_mac_address(char *mac);
 
 /* Callback function to notify stack about the readiness of the Eth module */
 void (*driver_readiness_status_callback)(uint8_t, int8_t) = 0;
@@ -241,7 +243,6 @@ void ETH_IRQHandler(void)
  */
 static void stm32_eth_arch_low_level_init(void)
 {
-    uint32_t regvalue = 0;
     HAL_StatusTypeDef hal_eth_init_status;
 
     /* Init ETH */
@@ -255,6 +256,10 @@ static void stm32_eth_arch_low_level_init(void)
     EthHandle.Init.ChecksumMode = ETH_CHECKSUM_BY_HARDWARE;
     EthHandle.Init.MediaInterface = ETH_MEDIA_INTERFACE_RMII;
     hal_eth_init_status = HAL_ETH_Init(&EthHandle);
+
+    if(hal_eth_init_status != HAL_OK) {
+    	error("Failed to initialize Ethernet.");
+    }
 
     /* Initialize Tx Descriptors list: Chain Mode */
     HAL_ETH_DMATxDescListInit(&EthHandle, DMATxDscrTab, &Tx_Buff[0][0], ETH_TXBUFNB);
@@ -355,7 +360,7 @@ error:
  * @note The passed buffer must be at least of size 'ETH_MAX_ETH_PAYLOAD'
  * @note This function is NOT thread-safe
  */
-static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, int paramLen)
+static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int paramLen)
 {
     uint16_t len = 0;
     uint8_t *q;
@@ -460,7 +465,7 @@ typedef struct Eth_Buf_Data_S {
 
 /* Global Variables */
 static Eth_Buf_Data_S base_DS = {
-		.tx_pos = 0
+		.rx_pos = 0
 };
 static uint8_t eth_driver_enabled = 0;
 static int8_t eth_interface_id = -1;
@@ -648,7 +653,7 @@ static void tx_queue_reclaim(void)
  *
  *  \returns 0 if successful, -1 if unsuccessful
  */
-static int8_t stm32_eth_send(const uint8_t *data_ptr, uint16_t data_len)
+static int8_t stm32_eth_send(uint8_t *data_ptr, uint16_t data_len)
 {
 	int ret;
 
