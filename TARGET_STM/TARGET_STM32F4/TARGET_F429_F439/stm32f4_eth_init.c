@@ -82,6 +82,6 @@ void HAL_ETH_MspDeInit(ETH_HandleTypeDef* heth)
         HAL_GPIO_DeInit(GPIOG, GPIO_PIN_2 | GPIO_PIN_11 | GPIO_PIN_13);
 
         /* Disable the Ethernet global Interrupt */
-        NVIC_DisableIRQ(ETH_IRQn);
+        HAL_NVIC_DisableIRQ(ETH_IRQn);
     }
 }
