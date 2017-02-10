@@ -288,7 +288,7 @@ static void stm32_eth_arch_low_level_init(void)
     EthHandle.Init.MediaInterface = ETH_MEDIA_INTERFACE_RMII;
     hal_eth_init_status = HAL_ETH_Init(&EthHandle);
     if(hal_eth_init_status != HAL_OK) {
-    	tr_warn("Failed to initialize Ethernet. (%s, %d)", __func__, __LINE__);
+    	tr_warn("Failed to initialize Ethernet. (%s, %d, %d)", __func__, __LINE__, hal_eth_init_status);
     }
 
 #if 0 // betzw: in case we want to change 'EthHandle.Init.ChecksumMode'
