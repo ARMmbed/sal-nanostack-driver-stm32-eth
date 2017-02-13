@@ -82,7 +82,7 @@ static int8_t stm32_eth_send(uint8_t *data_ptr, uint16_t data_len);
 __weak uint8_t mbed_otp_mac_address(char *mac);
 
 /* Callback function to notify stack about the readiness of the Eth module */
-void (*driver_readiness_status_callback)(uint8_t, int8_t) = 0;
+static void (*driver_readiness_status_callback)(uint8_t, int8_t) = 0;
 
 /* External function from hardware_init.c
  * Initializes the Eth module hardware */
