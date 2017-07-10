@@ -25,12 +25,13 @@
 #include "stm32_eth_nanostack_port.h"
 #include "eventOS_event_timer.h"
 #define HAVE_DEBUG 1
-#include "ns_trace.h"
 #include "nsdynmemLIB.h"
 #ifdef MBED_CONF_RTOS_PRESENT
 #include "cmsis_os.h"
 #endif
+#include "mbed_trace.h"
 #include "mbed_error.h"
+#include "mbed_debug.h"
 #include "mbed_interface.h"
 
 #define ETH_ARCH_PHY_ADDRESS    (0x00)
@@ -45,7 +46,6 @@
 #define TRACE_GROUP  "Eth"
 #define ENET_HDR_LEN                  (14)
 #define ENET_RX_RING_LEN              (4)
-#define ENET_TX_RING_LEN              (4)
 // TODO: #define ENET_ETH_MAX_FLEN             (1518)
 #define ENET_PTR_ALIGN(x,align)       ((void *)(((uintptr_t)(x) + ((align)-1)) & (~(uintptr_t)((align)- 1))))
 #define ENET_SIZE_ALIGN(x,align)      (((size_t)(x) + ((align)-1)) & (~(size_t)((align)- 1)))
@@ -97,22 +97,22 @@ static phy_device_driver_s eth_device_driver;
 static ETH_HandleTypeDef EthHandle;
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
-  #pragma data_alignment=4
+#pragma data_alignment=4
 #endif
 static __ALIGN_BEGIN ETH_DMADescTypeDef DMARxDscrTab[ETH_RXBUFNB] __ALIGN_END; /* Ethernet Rx DMA Descriptor */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
-  #pragma data_alignment=4
+#pragma data_alignment=4
 #endif
 static __ALIGN_BEGIN ETH_DMADescTypeDef DMATxDscrTab[ETH_TXBUFNB] __ALIGN_END; /* Ethernet Tx DMA Descriptor */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
-  #pragma data_alignment=4
+#pragma data_alignment=4
 #endif
 static __ALIGN_BEGIN uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE] __ALIGN_END; /* Ethernet Receive Buffer */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
-  #pragma data_alignment=4
+#pragma data_alignment=4
 #endif
 static __ALIGN_BEGIN uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE] __ALIGN_END; /* Ethernet Transmit Buffer */
 
@@ -407,7 +407,7 @@ error:
 /**
  * Should transfer the bytes of the incoming packet to the buffer passed as param.
  *
- * @note The passed buffer must be at least of size 'ETH_MAX_ETH_PAYLOAD'
+ * @note The passed buffer must be at least of size 'ETH_RX_BUF_SIZE'
  * @note This function is NOT thread-safe
  */
 static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int paramLen)
@@ -421,7 +421,7 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int par
     uint32_t byteslefttocopy = 0;
     uint32_t i = 0;
 
-    if((paramBuffer == NULL) || (paramLen < ETH_MAX_ETH_PAYLOAD)) {
+    if((paramBuffer == NULL) || (paramLen < ETH_RX_BUF_SIZE)) {
     	tr_debug("%s (%d)", __func__, __LINE__);
 
     	return -1;
@@ -439,7 +439,9 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int par
     buffer = (uint8_t*)EthHandle.RxFrameInfos.buffer;
 
     if(paramLen < len) {
-    	error("Should never happen");
+        tr_err("%s(%d) - %d, %d: Should never happen in this prototype version of the driver!",
+               __func__, __LINE__,
+               paramLen, len);
     }
 
     bufferoffset = 0;
@@ -518,7 +520,7 @@ typedef struct Eth_Buf_Data_S {
 	uint8_t rx_pos;
 
     /* Pointer to Buffers themselves */
-    uint8_t rx_buf[ENET_RX_RING_LEN][ETH_MAX_ETH_PAYLOAD];
+    uint8_t rx_buf[ENET_RX_RING_LEN][ETH_RX_BUF_SIZE];
 } Eth_Buf_Data_S;
 
 /* Global Variables */
@@ -715,12 +717,6 @@ static int8_t stm32_eth_send(uint8_t *data_ptr, uint16_t data_len)
 {
 	int ret;
 
-    /*Sanity Check*/
-    if (data_len > ETH_MAX_ETH_PAYLOAD) {
-        tr_error("Packet size bigger than ETH_MAX_ETH_PAYLOAD.");
-        return -1;
-    }
-
     // Get lock
     eth_if_lock();
 
@@ -868,13 +864,15 @@ static void enet_rx_task(void)
 	uint8_t buf_index = base_DS.rx_pos++;
 	base_DS.rx_pos %= ENET_RX_RING_LEN;
 
-	len = stm32_eth_arch_low_level_input(base_DS.rx_buf[buf_index], ETH_MAX_ETH_PAYLOAD);
+	len = stm32_eth_arch_low_level_input(base_DS.rx_buf[buf_index], ETH_RX_BUF_SIZE);
 	if(len > 0) {
 		// call Nanostack callback
         if (eth_device_driver.phy_rx_cb) {
         	tr_debug("%s (%d): len=%d", __func__, __LINE__, len);
             eth_device_driver.phy_rx_cb(base_DS.rx_buf[buf_index], len, 0xff, 0, eth_interface_id);
         }
+	} else {
+	    tr_info("%s(%d)", __func__, __LINE__);
 	}
 }
 
