@@ -503,7 +503,7 @@ static void stm32_eth_arch_enable_interrupts(void)
 	tr_debug("%s (%d)", __func__, __LINE__);
 
 	HAL_NVIC_SetPriority(ETH_IRQn, 0x7, 0);
-    HAL_NVIC_EnableIRQ(ETH_IRQn);
+	HAL_NVIC_EnableIRQ(ETH_IRQn);
 }
 
 #if 0 // betzw - NEEDED?!?
