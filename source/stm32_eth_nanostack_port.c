@@ -379,7 +379,6 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int par
     uint8_t *q;
     uint8_t *buffer;
     __IO ETH_DMADescTypeDef *dmarxdesc;
-    uint32_t bufferoffset = 0;
     uint32_t payloadoffset = 0;
     uint32_t byteslefttocopy = 0;
     uint32_t i = 0;
@@ -407,7 +406,6 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int par
                paramLen, len);
     }
 
-    bufferoffset = 0;
     q = paramBuffer;
     byteslefttocopy = len;
     payloadoffset = 0;
@@ -416,21 +414,20 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int par
         dmarxdesc = EthHandle.RxFrameInfos.FSRxDesc;
         {
             /* Check if the length of bytes to copy in current pbuf is bigger than Rx buffer size*/
-            while ((byteslefttocopy + bufferoffset) > ETH_RX_BUF_SIZE) {
+            while (byteslefttocopy > ETH_RX_BUF_SIZE) {
                 /* Copy data to pbuf */
-                memcpy((uint8_t*)((uint8_t*)q + payloadoffset), (uint8_t*)((uint8_t*)buffer + bufferoffset), (ETH_RX_BUF_SIZE - bufferoffset));
+                memcpy((uint8_t*)((uint8_t*)q + payloadoffset), (uint8_t*)buffer, ETH_RX_BUF_SIZE);
 
                 /* Point to next descriptor */
                 dmarxdesc = (ETH_DMADescTypeDef*)(dmarxdesc->Buffer2NextDescAddr);
                 buffer = (uint8_t*)(dmarxdesc->Buffer1Addr);
 
-                byteslefttocopy = byteslefttocopy - (ETH_RX_BUF_SIZE - bufferoffset);
-                payloadoffset = payloadoffset + (ETH_RX_BUF_SIZE - bufferoffset);
-                bufferoffset = 0;
+                byteslefttocopy = byteslefttocopy - ETH_RX_BUF_SIZE;
+                payloadoffset = payloadoffset + ETH_RX_BUF_SIZE;
             }
+
             /* Copy remaining data in pbuf */
-            memcpy((uint8_t*)((uint8_t*)q + payloadoffset), (uint8_t*)((uint8_t*)buffer + bufferoffset), byteslefttocopy);
-            bufferoffset = bufferoffset + byteslefttocopy;
+            memcpy((uint8_t*)((uint8_t*)q + payloadoffset), (uint8_t*)buffer, byteslefttocopy);
             byteslefttocopy = 0;
         }
 
@@ -498,7 +495,7 @@ void arm_eth_phy_device_register(uint8_t *mac_ptr, void (*driver_status_cb)(uint
         eth_device_driver.address_write = &stm32_eth_phy_address_write;
         eth_device_driver.driver_description = "ETH";
         eth_device_driver.link_type = PHY_LINK_ETHERNET_TYPE;
-        eth_device_driver.phy_MTU = ETH_MAX_ETH_PAYLOAD;
+        eth_device_driver.phy_MTU = ETH_RX_BUF_SIZE;
         eth_device_driver.phy_header_length = 0;
         eth_device_driver.phy_tail_length = 0;
         eth_device_driver.state_control = &stm32_eth_phy_interface_state_control;
