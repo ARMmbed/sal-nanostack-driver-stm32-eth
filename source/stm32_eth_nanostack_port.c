@@ -36,30 +36,20 @@
 
 #define ETH_ARCH_PHY_ADDRESS    (0x00)
 
-/* Macro Definitions */
-#ifndef MEM_ALLOC
-#define MEM_ALLOC ns_dyn_mem_alloc
-#endif
-#ifndef MEM_FREE
-#define MEM_FREE ns_dyn_mem_free
-#endif
-#define TRACE_GROUP  "Eth"
-#define ENET_HDR_LEN                  (14)
-#define ENET_RX_RING_LEN              (4)
-// TODO: #define ENET_ETH_MAX_FLEN             (1518)
-#define ENET_PTR_ALIGN(x,align)       ((void *)(((uintptr_t)(x) + ((align)-1)) & (~(uintptr_t)((align)- 1))))
-#define ENET_SIZE_ALIGN(x,align)      (((size_t)(x) + ((align)-1)) & (~(size_t)((align)- 1)))
-// TODO: #define ENET_BuffPtrAlign(n)          ENET_PTR_ALIGN(n, ENET_BUFF_ALIGNMENT)
-// TODO: #define ENET_BuffSizeAlign(n)         ENET_SIZE_ALIGN(n, ENET_BUFF_ALIGNMENT)
 
+/* Macro Definitions */
+#define TRACE_GROUP  "Eth"
+#define ENET_RX_RING_LEN              (4)
+#define ENET_RX_BUF_NB                (4)
+#define ENET_TX_BUF_NB                (4)
+#define ENET_HDR_LEN                  (14)
 
 #ifdef MBED_CONF_RTOS_PRESENT
 /* Thread IDs for the threads we will start */
 static osThreadId eth_irq_thread_id;
 
 /* Signals for IRQ thread */
-#define SIG_TX  1
-#define SIG_RX  2
+#define SIG_RX  1
 
 /* This routine starts a 'Thread' which handles IRQs*/
 static void Eth_IRQ_Thread_Create(void);
@@ -68,28 +58,16 @@ static void Eth_IRQ_Thread_Create(void);
 
 /* Function Prototypes*/
 static int8_t stm32_eth_phy_address_write(phy_address_type_e address_type, uint8_t *address_ptr);
-// betzw - NEEDED?!?: static void stm32_eth_set_address(uint8_t *address_ptr);
 static int8_t stm32_eth_phy_interface_state_control(phy_interface_state_e state, uint8_t x);
 static int8_t stm32_eth_phy_tx(uint8_t *data_ptr, uint16_t data_len, uint8_t tx_handle,data_protocol_e data_flow);
 static void PHY_LinkStatus_Task(void *y);
 static void eth_if_lock(void);
 static void eth_if_unlock(void);
-// betzw - NEEDED?!?: static void stm32_eth_initialize(uint8_t *mac_addr);
 static int8_t stm32_eth_send(uint8_t *data_ptr, uint16_t data_len);
-// TODO: static void k64f_eth_receive(volatile enet_rx_bd_struct_t *bdPtr);
-// betzw - NEEDED?!?: static void update_read_buffer(void);
-// TODO: static void ethernet_event_callback(ENET_Type *base, enet_handle_t *handle, enet_event_t event, void *param);
 __weak uint8_t mbed_otp_mac_address(char *mac);
 
 /* Callback function to notify stack about the readiness of the Eth module */
 static void (*driver_readiness_status_callback)(uint8_t, int8_t) = 0;
-
-/* External function from hardware_init.c
- * Initializes the Eth module hardware */
-// TODO: extern void initialize_enet_hardware(void);
-
-/* Global Eth module Handle*/
-// TODO: static enet_handle_t global_enet_handle;
 
 /* Nanostack generic PHY driver structure */
 static phy_device_driver_s eth_device_driver;
@@ -99,22 +77,22 @@ static ETH_HandleTypeDef EthHandle;
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
-static __ALIGN_BEGIN ETH_DMADescTypeDef DMARxDscrTab[ETH_RXBUFNB] __ALIGN_END; /* Ethernet Rx DMA Descriptor */
+static __ALIGN_BEGIN ETH_DMADescTypeDef DMARxDscrTab[ENET_RX_BUF_NB] __ALIGN_END; /* Ethernet Rx DMA Descriptor */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
-static __ALIGN_BEGIN ETH_DMADescTypeDef DMATxDscrTab[ETH_TXBUFNB] __ALIGN_END; /* Ethernet Tx DMA Descriptor */
+static __ALIGN_BEGIN ETH_DMADescTypeDef DMATxDscrTab[ENET_TX_BUF_NB] __ALIGN_END; /* Ethernet Tx DMA Descriptor */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
-static __ALIGN_BEGIN uint8_t Rx_Buff[ETH_RXBUFNB][ETH_RX_BUF_SIZE] __ALIGN_END; /* Ethernet Receive Buffer */
+static __ALIGN_BEGIN uint8_t Rx_Buff[ENET_RX_BUF_NB][ETH_RX_BUF_SIZE] __ALIGN_END; /* Ethernet Receive Buffer */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
-static __ALIGN_BEGIN uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE] __ALIGN_END; /* Ethernet Transmit Buffer */
+static __ALIGN_BEGIN uint8_t Tx_Buff[ENET_TX_BUF_NB][ETH_TX_BUF_SIZE] __ALIGN_END; /* Ethernet Transmit Buffer */
 
 
 /* Definitions for error constants. */
@@ -162,7 +140,7 @@ static __ALIGN_BEGIN uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE] __ALIGN_END; 
 static void stm32_default_mac_address(char *mac) {
     unsigned char ST_mac_addr[3] = {0x00, 0x80, 0xe1}; // default STMicro mac address
 
-    // Read unic id
+    // Read unique id
 #if defined (TARGET_STM32F2)
     uint32_t word0 = *(uint32_t *)0x1FFF7A10;
 #elif defined (TARGET_STM32F4)
@@ -291,26 +269,16 @@ static void stm32_eth_arch_low_level_init(void)
         tr_warn("Failed to initialize Ethernet. (%s, %d, %d)", __func__, __LINE__, hal_eth_init_status);
     }
 
-#if 0 // betzw: in case we want to change 'EthHandle.Init.ChecksumMode'
-    if(EthHandle.Init.ChecksumMode == ETH_CHECKSUM_BY_HARDWARE)
-    {
-        MacInitConf.ChecksumOffload = ETH_CHECKSUMOFFLAOD_ENABLE;
-    }
-    else
-    {
-        MacInitConf.ChecksumOffload = ETH_CHECKSUMOFFLAOD_DISABLE;
-    }
-#endif // 0
     hal_eth_init_status = HAL_ETH_ConfigMAC(&EthHandle, (ETH_MACInitTypeDef*)&MacInitConf);
     if(hal_eth_init_status != HAL_OK) {
         tr_warn("Failed to initialize Ethernet. (%s, %d)", __func__, __LINE__);
     }
 
     /* Initialize Tx Descriptors list: Chain Mode */
-    HAL_ETH_DMATxDescListInit(&EthHandle, DMATxDscrTab, &Tx_Buff[0][0], ETH_TXBUFNB);
+    HAL_ETH_DMATxDescListInit(&EthHandle, DMATxDscrTab, &Tx_Buff[0][0], ENET_TX_BUF_NB);
 
     /* Initialize Rx Descriptors list: Chain Mode  */
-    HAL_ETH_DMARxDescListInit(&EthHandle, DMARxDscrTab, &Rx_Buff[0][0], ETH_RXBUFNB);
+    HAL_ETH_DMARxDescListInit(&EthHandle, DMARxDscrTab, &Rx_Buff[0][0], ENET_RX_BUF_NB);
 
     /* Enable MAC and DMA transmission and reception */
     HAL_ETH_Start(&EthHandle);
@@ -506,13 +474,6 @@ static void stm32_eth_arch_enable_interrupts(void)
     HAL_NVIC_EnableIRQ(ETH_IRQn);
 }
 
-#if 0 // betzw - NEEDED?!?
-static void stm32_eth_arch_disable_interrupts(void)
-{
-    NVIC_DisableIRQ(ETH_IRQn);
-}
-#endif // 0
-
 
 /* Main data structure for keeping Eth module data */
 typedef struct Eth_Buf_Data_S {
@@ -623,86 +584,6 @@ static int8_t stm32_eth_phy_interface_state_control(phy_interface_state_e state,
 }
 
 
-#if 0 // betzw - NEEDED?!?
-/** \brief  Function to update the RX buffer descriptors
- *
- *  Moves the pointer to next buffer descriptor. If its the end of the Ring, wraps
- *  it around.
- */
-static void update_read_buffer(void)
-{
-#if 0 // TODO
-    /* Clears status. */
-    global_enet_handle.rxBdCurrent->control &= ENET_BUFFDESCRIPTOR_RX_WRAP_MASK;
-
-    /* Sets the receive buffer descriptor with the empty flag. */
-    global_enet_handle.rxBdCurrent->control |= ENET_BUFFDESCRIPTOR_RX_EMPTY_MASK;
-
-    /* Increases the buffer descriptor to the next one. */
-    if (global_enet_handle.rxBdCurrent->control & ENET_BUFFDESCRIPTOR_RX_WRAP_MASK) {
-        global_enet_handle.rxBdCurrent = global_enet_handle.rxBdBase;
-    } else {
-        global_enet_handle.rxBdCurrent++;
-    }
-
-    /* Actives the receive buffer descriptor. */
-    ENET->RDAR = ENET_RDAR_RDAR_MASK;
-#endif // 0
-}
-#endif // 0
-
-
-#if 0 // betzw - NEEDED?!?
-/** \brief  Function to receive data packets
- *
- *  Reads the data from the buffer provided by the buffer descriptor and hands
- *  it over to the Nanostack.
- *
- *  \param[in] bdPtr  Pointer to the receive buffer descriptor structure
- *  \param[in] idx    Index of the current buffer descriptor
- */
-static void stm32_eth_receive(volatile enet_rx_bd_struct_t *bdPtr)
-{
-#if 0 // TODO
-    if (!(bdPtr->control & ENET_BUFFDESCRIPTOR_RX_ERR_MASK)) {
-        /* Hand it over to Nanostack*/
-        if (eth_device_driver.phy_rx_cb) {
-            eth_device_driver.phy_rx_cb(bdPtr->buffer, bdPtr->length, 0xff,
-                                        0, eth_interface_id);
-        }
-    }
-#endif // 0
-}
-#endif // 0
-
-
-#if 0 // betzw- NEEDED?!?
-/** \brief  Function to reclaim used TX buffer descriptor
- *
- *  This function is called after a TX interrupt takes place. The interrupt will
- *  kick the IRQ thread which will eventually call this function.
- */
-static void tx_queue_reclaim(void)
-{
-#if 0 // TODO
-    // Traverse all descriptors, looking for the ones modified by the uDMA
-    while (!(global_enet_handle.txBdDirty->control & ENET_BUFFDESCRIPTOR_TX_READY_MASK) && global_enet_handle.txBdDirty->buffer) {
-        uint8_t i = global_enet_handle.txBdDirty - global_enet_handle.txBdBase;
-        global_enet_handle.txBdDirty->buffer = NULL;
-        MEM_FREE(base_DS.tx_buf[i]);
-        base_DS.tx_buf[i] = NULL;
-
-        if (global_enet_handle.txBdDirty->control & ENET_BUFFDESCRIPTOR_TX_WRAP_MASK) {
-            global_enet_handle.txBdDirty = global_enet_handle.txBdBase;
-        } else {
-            global_enet_handle.txBdDirty++;
-        }
-    }
-#endif // 0
-}
-#endif // 0
-
-
 /** \brief  Function to send data packets
  *
  * This function is called by stm32_eth_phy_tx() which is in turn called through
@@ -728,25 +609,6 @@ static int8_t stm32_eth_send(uint8_t *data_ptr, uint16_t data_len)
 
     return (ret == ERR_OK) ? 0 : -1;
 }
-
-
-#if 0 // betzw - NEEDED?!?
-/** \brief  Sets up MAC address
- *
- * This function is calle by stm32_eth_phy_address_write() which is in turn
- * called by nanostack in order to set up MAC address
- *
- *  \param[in] address_ptr   Pointer to MAC address block
- */
-static void stm32_eth_set_address(uint8_t *address_ptr)
-{
-#if 0 // TODO
-    /* When pointer to the MAC address is given. It could be 48-bit EUI generated
-     * from Radio, like atmel RF or manually inserted. Preferred method.*/
-    ENET_SetMacAddr(ENET, address_ptr);
-#endif // 0
-}
-#endif // 0
 
 
 static inline void stm32_set_mac_48bit(uint8_t *ptr) {
@@ -877,20 +739,6 @@ static void enet_rx_task(void)
 }
 
 
-#if 0 // betzw- NEEDED?!?
-/** \brief  Interrupt Service Routine for TX IRQ
- *      If Mbed RTOS is being used, this routine will be called from the
- *      Eth_IRQ_Thread (thread context) after receiving the signal from
- *      interrupt context (SIG_TX).
- *      Otherwise, it will be called directly from the interrupt context.
- */
-static void enet_tx_task(void)
-{
-    tx_queue_reclaim();
-}
-#endif // 0
-
-
 #ifdef MBED_CONF_RTOS_PRESENT
 /** \brief  Thread started by ETH_IRQ_Thread_Create
  *
@@ -913,12 +761,6 @@ static void Eth_IRQ_Thread(const void *x)
             enet_rx_task();
         }
 
-#if 0 // betzw: NEEDED?!?
-        if (event.value.signals & SIG_TX) {
-            enet_tx_task();
-        }
-#endif // 0
-
         eth_if_unlock();
     }
 }
@@ -933,4 +775,5 @@ static void Eth_IRQ_Thread_Create(void)
     static osThreadDef(Eth_IRQ_Thread, osPriorityRealtime, 512 * 4 /* betzw - WAS: 512 */);
     eth_irq_thread_id = osThreadCreate(osThread(Eth_IRQ_Thread), NULL);
 }
+
 #endif /*MBED_CONF_RTOS_PRESENT*/
