@@ -157,8 +157,8 @@ static __ALIGN_BEGIN uint8_t Tx_Buff[ETH_TXBUFNB][ETH_TX_BUF_SIZE] __ALIGN_END; 
 
 
 /** This returns a unique 6-byte MAC address, based on the unique device ID register
-*  @param mac A 6-byte array to write the MAC address
-*/
+ *  @param mac A 6-byte array to write the MAC address
+ */
 static void stm32_default_mac_address(char *mac) {
     unsigned char ST_mac_addr[3] = {0x00, 0x80, 0xe1}; // default STMicro mac address
 
@@ -170,7 +170,7 @@ static void stm32_default_mac_address(char *mac) {
 #elif defined (TARGET_STM32F7)
     uint32_t word0 = *(uint32_t *)0x1FF0F420;
 #else
-    #error MAC address can not be derived from target unique Id
+#error MAC address can not be derived from target unique Id
 #endif
 
     mac[0] = ST_mac_addr[0];
@@ -185,14 +185,14 @@ static void stm32_default_mac_address(char *mac) {
 
 
 /** This returns a unique 6-byte MAC address, based on the device UID
-*  This function overrides hal/common/mbed_interface.c function
-*  @param mac A 6-byte array to write the MAC address
-*/
+ *  This function overrides hal/common/mbed_interface.c function
+ *  @param mac A 6-byte array to write the MAC address
+ */
 void mbed_mac_address(char *mac) {
     if (mbed_otp_mac_address(mac)) {
         return;
     } else {
-    	stm32_default_mac_address(mac);
+        stm32_default_mac_address(mac);
     }
     return;
 }
@@ -213,9 +213,9 @@ __weak uint8_t mbed_otp_mac_address(char *mac) {
 void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth)
 {
 #ifdef MBED_CONF_RTOS_PRESENT
-            osSignalSet(eth_irq_thread_id, SIG_RX);
+    osSignalSet(eth_irq_thread_id, SIG_RX);
 #else
-            enet_rx_task();
+    enet_rx_task();
 #endif /*MBED_CONF_RTOS_PRESENT*/
 }
 
@@ -241,35 +241,35 @@ void ETH_IRQHandler(void)
  *        for this ethernetif
  */
 static const ETH_MACInitTypeDef MacInitConf = {
-	.Watchdog = ETH_WATCHDOG_ENABLE,
-	.Jabber = ETH_JABBER_ENABLE,
-	.InterFrameGap = ETH_INTERFRAMEGAP_96BIT,
-	.CarrierSense = ETH_CARRIERSENCE_ENABLE,
-	.ReceiveOwn = ETH_RECEIVEOWN_ENABLE,
-	.LoopbackMode = ETH_LOOPBACKMODE_DISABLE,
-	.ChecksumOffload = ETH_CHECKSUMOFFLAOD_ENABLE,
-	.RetryTransmission = ETH_RETRYTRANSMISSION_DISABLE,
-	.AutomaticPadCRCStrip = ETH_AUTOMATICPADCRCSTRIP_DISABLE,
-	.BackOffLimit = ETH_BACKOFFLIMIT_10,
-	.DeferralCheck = ETH_DEFFERRALCHECK_DISABLE,
-	.ReceiveAll = ETH_RECEIVEAll_DISABLE,
-	.SourceAddrFilter = ETH_SOURCEADDRFILTER_DISABLE,
-	.PassControlFrames = ETH_PASSCONTROLFRAMES_BLOCKALL,
-	.BroadcastFramesReception = ETH_BROADCASTFRAMESRECEPTION_ENABLE,
-	.DestinationAddrFilter = ETH_DESTINATIONADDRFILTER_NORMAL,
-	.PromiscuousMode = ETH_PROMISCUOUS_MODE_DISABLE,
-	.MulticastFramesFilter = ETH_MULTICASTFRAMESFILTER_NONE,
-	.UnicastFramesFilter = ETH_UNICASTFRAMESFILTER_PERFECT,
-	.HashTableHigh = 0x0U,
-	.HashTableLow = 0x0U,
-	.PauseTime = 0x0U,
-	.ZeroQuantaPause = ETH_ZEROQUANTAPAUSE_DISABLE,
-	.PauseLowThreshold = ETH_PAUSELOWTHRESHOLD_MINUS4,
-	.UnicastPauseFrameDetect = ETH_UNICASTPAUSEFRAMEDETECT_DISABLE,
-	.ReceiveFlowControl = ETH_RECEIVEFLOWCONTROL_DISABLE,
-	.TransmitFlowControl = ETH_TRANSMITFLOWCONTROL_DISABLE,
-	.VLANTagComparison = ETH_VLANTAGCOMPARISON_16BIT,
-	.VLANTagIdentifier = 0x0U,
+        .Watchdog = ETH_WATCHDOG_ENABLE,
+        .Jabber = ETH_JABBER_ENABLE,
+        .InterFrameGap = ETH_INTERFRAMEGAP_96BIT,
+        .CarrierSense = ETH_CARRIERSENCE_ENABLE,
+        .ReceiveOwn = ETH_RECEIVEOWN_ENABLE,
+        .LoopbackMode = ETH_LOOPBACKMODE_DISABLE,
+        .ChecksumOffload = ETH_CHECKSUMOFFLAOD_ENABLE,
+        .RetryTransmission = ETH_RETRYTRANSMISSION_DISABLE,
+        .AutomaticPadCRCStrip = ETH_AUTOMATICPADCRCSTRIP_DISABLE,
+        .BackOffLimit = ETH_BACKOFFLIMIT_10,
+        .DeferralCheck = ETH_DEFFERRALCHECK_DISABLE,
+        .ReceiveAll = ETH_RECEIVEAll_DISABLE,
+        .SourceAddrFilter = ETH_SOURCEADDRFILTER_DISABLE,
+        .PassControlFrames = ETH_PASSCONTROLFRAMES_BLOCKALL,
+        .BroadcastFramesReception = ETH_BROADCASTFRAMESRECEPTION_ENABLE,
+        .DestinationAddrFilter = ETH_DESTINATIONADDRFILTER_NORMAL,
+        .PromiscuousMode = ETH_PROMISCUOUS_MODE_DISABLE,
+        .MulticastFramesFilter = ETH_MULTICASTFRAMESFILTER_NONE,
+        .UnicastFramesFilter = ETH_UNICASTFRAMESFILTER_PERFECT,
+        .HashTableHigh = 0x0U,
+        .HashTableLow = 0x0U,
+        .PauseTime = 0x0U,
+        .ZeroQuantaPause = ETH_ZEROQUANTAPAUSE_DISABLE,
+        .PauseLowThreshold = ETH_PAUSELOWTHRESHOLD_MINUS4,
+        .UnicastPauseFrameDetect = ETH_UNICASTPAUSEFRAMEDETECT_DISABLE,
+        .ReceiveFlowControl = ETH_RECEIVEFLOWCONTROL_DISABLE,
+        .TransmitFlowControl = ETH_TRANSMITFLOWCONTROL_DISABLE,
+        .VLANTagComparison = ETH_VLANTAGCOMPARISON_16BIT,
+        .VLANTagIdentifier = 0x0U,
 };
 
 static void stm32_eth_arch_low_level_init(void)
@@ -288,22 +288,22 @@ static void stm32_eth_arch_low_level_init(void)
     EthHandle.Init.MediaInterface = ETH_MEDIA_INTERFACE_RMII;
     hal_eth_init_status = HAL_ETH_Init(&EthHandle);
     if(hal_eth_init_status != HAL_OK) {
-    	tr_warn("Failed to initialize Ethernet. (%s, %d, %d)", __func__, __LINE__, hal_eth_init_status);
+        tr_warn("Failed to initialize Ethernet. (%s, %d, %d)", __func__, __LINE__, hal_eth_init_status);
     }
 
 #if 0 // betzw: in case we want to change 'EthHandle.Init.ChecksumMode'
     if(EthHandle.Init.ChecksumMode == ETH_CHECKSUM_BY_HARDWARE)
     {
-      MacInitConf.ChecksumOffload = ETH_CHECKSUMOFFLAOD_ENABLE;
+        MacInitConf.ChecksumOffload = ETH_CHECKSUMOFFLAOD_ENABLE;
     }
     else
     {
-      MacInitConf.ChecksumOffload = ETH_CHECKSUMOFFLAOD_DISABLE;
+        MacInitConf.ChecksumOffload = ETH_CHECKSUMOFFLAOD_DISABLE;
     }
 #endif // 0
     hal_eth_init_status = HAL_ETH_ConfigMAC(&EthHandle, (ETH_MACInitTypeDef*)&MacInitConf);
     if(hal_eth_init_status != HAL_OK) {
-    	tr_warn("Failed to initialize Ethernet. (%s, %d)", __func__, __LINE__);
+        tr_warn("Failed to initialize Ethernet. (%s, %d)", __func__, __LINE__);
     }
 
     /* Initialize Tx Descriptors list: Chain Mode */
@@ -379,27 +379,27 @@ static int stm32_eth_arch_low_level_output(uint8_t *payload, int len)
         framelength = framelength + byteslefttocopy;
     }
 
-	tr_debug("%s (%d): %d", __func__, __LINE__, (int)framelength);
+    tr_debug("%s (%d): %d", __func__, __LINE__, (int)framelength);
 
-	/* Prepare transmit descriptors to give to DMA */
+    /* Prepare transmit descriptors to give to DMA */
     HAL_ETH_TransmitFrame(&EthHandle, framelength);
 
     errval = ERR_OK;
 
-error:
+    error:
 
     /* When Transmit Underflow flag is set, clear it and issue a Transmit Poll Demand to resume transmission */
     if ((EthHandle.Instance->DMASR & ETH_DMASR_TUS) != (uint32_t)RESET) {
-    	tr_debug("%s (%d)", __func__, __LINE__);
+        tr_debug("%s (%d)", __func__, __LINE__);
 
-    	/* Clear TUS ETHERNET DMA flag */
+        /* Clear TUS ETHERNET DMA flag */
         EthHandle.Instance->DMASR = ETH_DMASR_TUS;
 
         /* Resume DMA transmission*/
         EthHandle.Instance->DMATPDR = 0;
     }
 
-	tr_debug("%s (%d): %d", __func__, __LINE__, errval);
+    tr_debug("%s (%d): %d", __func__, __LINE__, errval);
     return errval;
 }
 
@@ -422,14 +422,14 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int par
     uint32_t i = 0;
 
     if((paramBuffer == NULL) || (paramLen < ETH_RX_BUF_SIZE)) {
-    	tr_debug("%s (%d)", __func__, __LINE__);
+        tr_debug("%s (%d)", __func__, __LINE__);
 
-    	return -1;
+        return -1;
     }
 
     /* get received frame */
     if (HAL_ETH_GetReceivedFrame(&EthHandle) != HAL_OK) {
-    	tr_debug("%s (%d)", __func__, __LINE__);
+        tr_debug("%s (%d)", __func__, __LINE__);
 
         return -2;
     }
@@ -492,7 +492,7 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int par
         EthHandle.Instance->DMARPDR = 0;
     }
 
-	tr_debug("%s (%d): %d", __func__, __LINE__, (int)(len - byteslefttocopy));
+    tr_debug("%s (%d): %d", __func__, __LINE__, (int)(len - byteslefttocopy));
 
     return len - byteslefttocopy;
 }
@@ -500,10 +500,10 @@ static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int par
 
 static void stm32_eth_arch_enable_interrupts(void)
 {
-	tr_debug("%s (%d)", __func__, __LINE__);
+    tr_debug("%s (%d)", __func__, __LINE__);
 
-	HAL_NVIC_SetPriority(ETH_IRQn, 0x7, 0);
-	HAL_NVIC_EnableIRQ(ETH_IRQn);
+    HAL_NVIC_SetPriority(ETH_IRQn, 0x7, 0);
+    HAL_NVIC_EnableIRQ(ETH_IRQn);
 }
 
 #if 0 // betzw - NEEDED?!?
@@ -517,7 +517,7 @@ static void stm32_eth_arch_disable_interrupts(void)
 /* Main data structure for keeping Eth module data */
 typedef struct Eth_Buf_Data_S {
     /* Indexes of next RX Buffer descriptor*/
-	uint8_t rx_pos;
+    uint8_t rx_pos;
 
     /* Pointer to Buffers themselves */
     uint8_t rx_buf[ENET_RX_RING_LEN][ETH_RX_BUF_SIZE];
@@ -525,7 +525,7 @@ typedef struct Eth_Buf_Data_S {
 
 /* Global Variables */
 static Eth_Buf_Data_S base_DS = {
-		.rx_pos = 0
+        .rx_pos = 0
 };
 static uint8_t eth_driver_enabled = 0;
 static int8_t eth_interface_id = -1;
@@ -563,7 +563,7 @@ void arm_eth_phy_device_register(uint8_t *mac_ptr, void (*driver_status_cb)(uint
     }
 
     if (!eth_driver_enabled) {
-    	stm32_eth_arch_low_level_init();
+        stm32_eth_arch_low_level_init();
 #if !DEVICE_EMAC
         stm32_eth_arch_enable_interrupts();
 #endif
@@ -595,7 +595,7 @@ static int8_t stm32_eth_phy_tx(uint8_t *data_ptr, uint16_t data_len, uint8_t tx_
     (void)data_flow;
     (void)tx_handle;
 
-   return retval;
+    return retval;
 }
 
 /* TODO State Control Handling.*/
@@ -668,7 +668,7 @@ static void stm32_eth_receive(volatile enet_rx_bd_struct_t *bdPtr)
         /* Hand it over to Nanostack*/
         if (eth_device_driver.phy_rx_cb) {
             eth_device_driver.phy_rx_cb(bdPtr->buffer, bdPtr->length, 0xff,
-                                                 0, eth_interface_id);
+                                        0, eth_interface_id);
         }
     }
 #endif // 0
@@ -715,7 +715,7 @@ static void tx_queue_reclaim(void)
  */
 static int8_t stm32_eth_send(uint8_t *data_ptr, uint16_t data_len)
 {
-	int ret;
+    int ret;
 
     // Get lock
     eth_if_lock();
@@ -750,9 +750,9 @@ static void stm32_eth_set_address(uint8_t *address_ptr)
 
 
 static inline void stm32_set_mac_48bit(uint8_t *ptr) {
-	tr_debug("%s (%d), adr0=%x, adr1=%x, adr2=%x, adr3=%x, adr4=%x, adr5=%x",
-			__func__, __LINE__,
-			ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5]);
+    tr_debug("%s (%d), adr0=%x, adr1=%x, adr2=%x, adr3=%x, adr4=%x, adr5=%x",
+             __func__, __LINE__,
+             ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5]);
 }
 
 /** \brief  Stack sets the MAC address using this routine
@@ -771,9 +771,9 @@ static int8_t stm32_eth_phy_address_write(phy_address_type_e address_type, uint8
 
     switch(address_type){
         case PHY_MAC_48BIT:
-        	stm32_set_mac_48bit(address_ptr); /* betzw - WAS: stm32_eth_set_address(address_ptr);
+            stm32_set_mac_48bit(address_ptr); /* betzw - WAS: stm32_eth_set_address(address_ptr);
         	                                     But once initialized, we cannot change MAC address in the driver!?!
-        	 	 	 	 	 	 	 	 	   */
+             */
             break;
         case PHY_MAC_64BIT:
         case PHY_MAC_16BIT:
@@ -792,9 +792,9 @@ static inline bool stm32_get_link_status() {
 
     if (HAL_ETH_ReadPHYRegister(&EthHandle, PHY_BSR, &status) == HAL_OK) {
         if (status & PHY_LINKED_STATUS) {
-        	ret = true;
+            ret = true;
         } else if (!(status & PHY_LINKED_STATUS)) {
-        	ret = false;
+            ret = false;
         }
     }
 
@@ -859,21 +859,21 @@ static void eth_if_unlock(void)
  */
 static void enet_rx_task(void)
 {
-	int len;
+    int len;
 
-	uint8_t buf_index = base_DS.rx_pos++;
-	base_DS.rx_pos %= ENET_RX_RING_LEN;
+    uint8_t buf_index = base_DS.rx_pos++;
+    base_DS.rx_pos %= ENET_RX_RING_LEN;
 
-	len = stm32_eth_arch_low_level_input(base_DS.rx_buf[buf_index], ETH_RX_BUF_SIZE);
-	if(len > 0) {
-		// call Nanostack callback
+    len = stm32_eth_arch_low_level_input(base_DS.rx_buf[buf_index], ETH_RX_BUF_SIZE);
+    if(len > 0) {
+        // call Nanostack callback
         if (eth_device_driver.phy_rx_cb) {
-        	tr_debug("%s (%d): len=%d", __func__, __LINE__, len);
+            tr_debug("%s (%d): len=%d", __func__, __LINE__, len);
             eth_device_driver.phy_rx_cb(base_DS.rx_buf[buf_index], len, 0xff, 0, eth_interface_id);
         }
-	} else {
-	    tr_info("%s(%d)", __func__, __LINE__);
-	}
+    } else {
+        tr_info("%s(%d)", __func__, __LINE__);
+    }
 }
 
 
