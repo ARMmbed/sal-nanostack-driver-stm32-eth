@@ -41,21 +41,18 @@
 
 /* Macro Definitions */
 #define TRACE_GROUP  "Eth"
-#define ENET_RX_RING_LEN              (4)
-#define ENET_RX_BUF_NB                (4)
+#define ENET_RX_BUF_NB                (6)
 #define ENET_TX_BUF_NB                (4)
 #define ENET_HDR_LEN                  (14)
 
+#define ENET_RX_RING_LEN              (ENET_RX_BUF_NB)
 
-/* Thread IDs for the threads we will start */
-static osThreadId eth_irq_thread_id;
 
 /* Signals for IRQ thread */
 #define SIG_RX  1
 
 /* This routine starts a 'Thread' which handles IRQs*/
 static void Eth_IRQ_Thread_Create(void);
-
 
 /* Function Prototypes*/
 static int8_t stm32_eth_phy_address_write(phy_address_type_e address_type, uint8_t *address_ptr);
@@ -72,8 +69,15 @@ static void (*driver_readiness_status_callback)(uint8_t, int8_t) = 0;
 
 /* Nanostack generic PHY driver structure */
 static phy_device_driver_s eth_device_driver;
-
 static ETH_HandleTypeDef EthHandle;
+
+/* Status variables */
+static uint8_t eth_driver_enabled = 0;
+static int8_t eth_interface_id = -1;
+static bool link_currently_up = false;
+
+/* Thread ID for the thread we will start */
+static osThreadId eth_irq_thread_id;
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
@@ -298,51 +302,45 @@ static int stm32_eth_arch_low_level_output(uint8_t *payload, int len)
     uint8_t *buffer = (uint8_t*)(EthHandle.TxDesc->Buffer1Addr);
     __IO ETH_DMADescTypeDef *DmaTxDesc;
     uint32_t framelength = 0;
-    uint32_t bufferoffset = 0;
     uint32_t byteslefttocopy = 0;
     uint32_t payloadoffset = 0;
     DmaTxDesc = EthHandle.TxDesc;
-    bufferoffset = 0;
 
     /* copy payload to driver buffers */
-    {
-        /* Is this buffer available? If not, goto error */
+    /* Is this buffer available? If not, goto error */
+    if ((DmaTxDesc->Status & ETH_DMATXDESC_OWN) != (uint32_t)RESET) {
+        errval = ERR_USE;
+        goto error;
+    }
+
+    /* Get bytes in current lwIP buffer */
+    byteslefttocopy = len;
+    payloadoffset = 0;
+
+    /* Check if the length of data to copy is bigger than Tx buffer size*/
+    while (byteslefttocopy > ETH_TX_BUF_SIZE) {
+        /* Copy data to Tx buffer*/
+        memcpy((uint8_t*)buffer, (uint8_t*)((uint8_t*)payload + payloadoffset), ETH_TX_BUF_SIZE);
+
+        /* Point to next descriptor */
+        DmaTxDesc = (ETH_DMADescTypeDef*)(DmaTxDesc->Buffer2NextDescAddr);
+
+        /* Check if the buffer is available */
         if ((DmaTxDesc->Status & ETH_DMATXDESC_OWN) != (uint32_t)RESET) {
             errval = ERR_USE;
             goto error;
         }
 
-        /* Get bytes in current lwIP buffer */
-        byteslefttocopy = len;
-        payloadoffset = 0;
+        buffer = (uint8_t*)(DmaTxDesc->Buffer1Addr);
 
-        /* Check if the length of data to copy is bigger than Tx buffer size*/
-        while ((byteslefttocopy + bufferoffset) > ETH_TX_BUF_SIZE) {
-            /* Copy data to Tx buffer*/
-            memcpy((uint8_t*)((uint8_t*)buffer + bufferoffset), (uint8_t*)((uint8_t*)payload + payloadoffset), (ETH_TX_BUF_SIZE - bufferoffset));
-
-            /* Point to next descriptor */
-            DmaTxDesc = (ETH_DMADescTypeDef*)(DmaTxDesc->Buffer2NextDescAddr);
-
-            /* Check if the buffer is available */
-            if ((DmaTxDesc->Status & ETH_DMATXDESC_OWN) != (uint32_t)RESET) {
-                errval = ERR_USE;
-                goto error;
-            }
-
-            buffer = (uint8_t*)(DmaTxDesc->Buffer1Addr);
-
-            byteslefttocopy = byteslefttocopy - (ETH_TX_BUF_SIZE - bufferoffset);
-            payloadoffset = payloadoffset + (ETH_TX_BUF_SIZE - bufferoffset);
-            framelength = framelength + (ETH_TX_BUF_SIZE - bufferoffset);
-            bufferoffset = 0;
-        }
-
-        /* Copy the remaining bytes */
-        memcpy((uint8_t*)((uint8_t*)buffer + bufferoffset), (uint8_t*)((uint8_t*)payload + payloadoffset), byteslefttocopy);
-        bufferoffset = bufferoffset + byteslefttocopy;
-        framelength = framelength + byteslefttocopy;
+        byteslefttocopy = byteslefttocopy - ETH_TX_BUF_SIZE;
+        payloadoffset = payloadoffset + ETH_TX_BUF_SIZE;
+        framelength = framelength + ETH_TX_BUF_SIZE;
     }
+
+    /* Copy the remaining bytes */
+    memcpy((uint8_t*)buffer, (uint8_t*)((uint8_t*)payload + payloadoffset), byteslefttocopy);
+    framelength = framelength + byteslefttocopy;
 
     tr_debug("%s (%d): %d", __func__, __LINE__, (int)framelength);
 
@@ -351,7 +349,7 @@ static int stm32_eth_arch_low_level_output(uint8_t *payload, int len)
 
     errval = ERR_OK;
 
-    error:
+error:
 
     /* When Transmit Underflow flag is set, clear it and issue a Transmit Poll Demand to resume transmission */
     if ((EthHandle.Instance->DMASR & ETH_DMASR_TUS) != (uint32_t)RESET) {
@@ -485,9 +483,6 @@ typedef struct Eth_Buf_Data_S {
 static Eth_Buf_Data_S base_DS = {
         .rx_pos = 0
 };
-static uint8_t eth_driver_enabled = 0;
-static int8_t eth_interface_id = -1;
-static bool link_currently_up = false;
 
 
 /** \brief  Function to register the ethernet driver to the Nanostack
@@ -721,16 +716,19 @@ static void enet_rx_task(void)
     uint8_t buf_index = base_DS.rx_pos++;
     base_DS.rx_pos %= ENET_RX_RING_LEN;
 
-    len = stm32_eth_arch_low_level_input(base_DS.rx_buf[buf_index], ETH_RX_BUF_SIZE);
-    if(len > 0) {
-        // call Nanostack callback
-        if (eth_device_driver.phy_rx_cb) {
-            tr_debug("%s (%d): len=%d", __func__, __LINE__, len);
-            eth_device_driver.phy_rx_cb(base_DS.rx_buf[buf_index], len, 0xff, 0, eth_interface_id);
+    do {
+        len = stm32_eth_arch_low_level_input(base_DS.rx_buf[buf_index], ETH_RX_BUF_SIZE);
+        if(len > 0) {
+            // call Nanostack callback
+            if (eth_device_driver.phy_rx_cb) {
+                tr_debug("%s (%d): len=%d", __func__, __LINE__, len);
+                eth_device_driver.phy_rx_cb(base_DS.rx_buf[buf_index], len, 0xff, 0, eth_interface_id);
+            }
+        } else {
+            tr_debug("%s(%d)", __func__, __LINE__);
         }
-    } else {
-        tr_info("%s(%d)", __func__, __LINE__);
     }
+    while(len > 0);
 }
 
 
@@ -744,17 +742,15 @@ static void enet_rx_task(void)
 static void Eth_IRQ_Thread(const void *x)
 {
     for (;;) {
-        osEvent event =  osSignalWait(0, osWaitForever);
+        osEvent event = osSignalWait(0, osWaitForever);
         if (event.status != osEventSignal) {
             continue;
         }
 
+        MBED_ASSERT(event.value.signals & SIG_RX);
+
         eth_if_lock();
-
-        if (event.value.signals & SIG_RX) {
-            enet_rx_task();
-        }
-
+        enet_rx_task();
         eth_if_unlock();
     }
 }
