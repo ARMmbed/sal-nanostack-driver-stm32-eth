@@ -15,6 +15,11 @@
  * limitations under the License.
  */
 
+#if !MBED_CONF_RTOS_PRESENT
+#error RTOS is required for `stm32_eth_nanostack_port.c`!
+#endif
+
+#define HAVE_DEBUG 1
 
 #include <string.h>
 #include <stdlib.h>
@@ -24,11 +29,8 @@
 #include "ns_types.h"
 #include "stm32_eth_nanostack_port.h"
 #include "eventOS_event_timer.h"
-#define HAVE_DEBUG 1
 #include "nsdynmemLIB.h"
-#ifdef MBED_CONF_RTOS_PRESENT
 #include "cmsis_os.h"
-#endif
 #include "mbed_trace.h"
 #include "mbed_error.h"
 #include "mbed_debug.h"
@@ -44,7 +46,7 @@
 #define ENET_TX_BUF_NB                (4)
 #define ENET_HDR_LEN                  (14)
 
-#ifdef MBED_CONF_RTOS_PRESENT
+
 /* Thread IDs for the threads we will start */
 static osThreadId eth_irq_thread_id;
 
@@ -53,7 +55,6 @@ static osThreadId eth_irq_thread_id;
 
 /* This routine starts a 'Thread' which handles IRQs*/
 static void Eth_IRQ_Thread_Create(void);
-#endif /*MBED_CONF_RTOS_PRESENT*/
 
 
 /* Function Prototypes*/
@@ -190,11 +191,7 @@ __weak uint8_t mbed_otp_mac_address(char *mac) {
  */
 void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth)
 {
-#ifdef MBED_CONF_RTOS_PRESENT
     osSignalSet(eth_irq_thread_id, SIG_RX);
-#else
-    enet_rx_task();
-#endif /*MBED_CONF_RTOS_PRESENT*/
 }
 
 /**
@@ -530,9 +527,7 @@ void arm_eth_phy_device_register(uint8_t *mac_ptr, void (*driver_status_cb)(uint
 #endif
         eth_driver_enabled = 1;
         driver_readiness_status_callback(link_currently_up, eth_interface_id);
-#ifdef MBED_CONF_RTOS_PRESENT
         Eth_IRQ_Thread_Create();
-#endif
         eventOS_timeout_ms(PHY_LinkStatus_Task, 500, NULL);
     }
 }
@@ -739,7 +734,6 @@ static void enet_rx_task(void)
 }
 
 
-#ifdef MBED_CONF_RTOS_PRESENT
 /** \brief  Thread started by ETH_IRQ_Thread_Create
  *
  *      Used only in case of  mbed RTOS. This Thread handles the signals coming
@@ -775,5 +769,3 @@ static void Eth_IRQ_Thread_Create(void)
     static osThreadDef(Eth_IRQ_Thread, osPriorityRealtime, 512 * 4 /* betzw - WAS: 512 */);
     eth_irq_thread_id = osThreadCreate(osThread(Eth_IRQ_Thread), NULL);
 }
-
-#endif /*MBED_CONF_RTOS_PRESENT*/
