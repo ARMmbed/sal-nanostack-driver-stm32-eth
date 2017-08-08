@@ -36,17 +36,12 @@
 #include "mbed_debug.h"
 #include "mbed_interface.h"
 
-#define ETH_ARCH_PHY_ADDRESS    (0x00)
-
-
 /* Macro Definitions */
 #define TRACE_GROUP  "Eth"
+#define ENET_ARCH_PHY_ADDRESS         (0x00)
 #define ENET_RX_BUF_NB                (6)
 #define ENET_TX_BUF_NB                (4)
 #define ENET_HDR_LEN                  (14)
-
-#define ENET_RX_RING_LEN              (ENET_RX_BUF_NB)
-
 
 /* Signals for IRQ thread */
 #define SIG_RX  1
@@ -79,6 +74,7 @@ static bool link_currently_up = false;
 /* Thread ID for the thread we will start */
 static osThreadId eth_irq_thread_id;
 
+/* DMA descriptors & buffers */
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
@@ -98,45 +94,6 @@ static __ALIGN_BEGIN uint8_t Rx_Buff[ENET_RX_BUF_NB][ETH_RX_BUF_SIZE] __ALIGN_EN
 #pragma data_alignment=4
 #endif
 static __ALIGN_BEGIN uint8_t Tx_Buff[ENET_TX_BUF_NB][ETH_TX_BUF_SIZE] __ALIGN_END; /* Ethernet Transmit Buffer */
-
-
-/* Definitions for error constants. */
-/** No error, everything OK. */
-#define ERR_OK          0
-/** Out of memory error.     */
-#define ERR_MEM        -1
-/** Buffer error.            */
-#define ERR_BUF        -2
-/** Timeout.                 */
-#define ERR_TIMEOUT    -3
-/** Routing problem.         */
-#define ERR_RTE        -4
-/** Operation in progress    */
-#define ERR_INPROGRESS -5
-/** Illegal value.           */
-#define ERR_VAL        -6
-/** Operation would block.   */
-#define ERR_WOULDBLOCK -7
-/** Address in use.          */
-#define ERR_USE        -8
-/** Already connecting.      */
-#define ERR_ALREADY    -9
-/** Conn already established.*/
-#define ERR_ISCONN     -10
-/** Not connected.           */
-#define ERR_CONN       -11
-/** Low-level netif error    */
-#define ERR_IF         -12
-
-#define ERR_IS_FATAL(e) ((e) <= ERR_ABRT)
-/** Connection aborted.      */
-#define ERR_ABRT       -13
-/** Connection reset.        */
-#define ERR_RST        -14
-/** Connection closed.       */
-#define ERR_CLSD       -15
-/** Illegal argument.        */
-#define ERR_ARG        -16
 
 
 /** This returns a unique 6-byte MAC address, based on the unique device ID register
@@ -197,6 +154,7 @@ void HAL_ETH_RxCpltCallback(ETH_HandleTypeDef *heth)
 {
     osSignalSet(eth_irq_thread_id, SIG_RX);
 }
+
 
 /**
  * Ethernet IRQ Handler
@@ -260,7 +218,7 @@ static void stm32_eth_arch_low_level_init(void)
     EthHandle.Init.AutoNegotiation = ETH_AUTONEGOTIATION_ENABLE;
     EthHandle.Init.Speed = ETH_SPEED_100M;
     EthHandle.Init.DuplexMode = ETH_MODE_FULLDUPLEX;
-    EthHandle.Init.PhyAddress = ETH_ARCH_PHY_ADDRESS;
+    EthHandle.Init.PhyAddress = ENET_ARCH_PHY_ADDRESS;
     EthHandle.Init.MACAddr = &eth_device_driver.PHY_MAC[0]; // WAS: &MACAddr[0];
     EthHandle.Init.RxMode = ETH_RXINTERRUPT_MODE;
     EthHandle.Init.ChecksumMode = ETH_CHECKSUM_BY_HARDWARE;
@@ -289,11 +247,6 @@ static void stm32_eth_arch_low_level_init(void)
 /**
  * This function should do the actual transmission of the packet.
  *
- * @note Returning ERR_MEM here if a DMA queue of your MAC is full can lead to
- *       strange results. You might consider waiting for space in the DMA queue
- *       to become available since the stack doesn't retry to send a packet
- *       dropped because of memory failure (except for the TCP timers).
- *
  * @note This function is NOT thread-safe
  */
 static int stm32_eth_arch_low_level_output(uint8_t *payload, int len)
@@ -309,7 +262,7 @@ static int stm32_eth_arch_low_level_output(uint8_t *payload, int len)
     /* copy payload to driver buffers */
     /* Is this buffer available? If not, goto error */
     if ((DmaTxDesc->Status & ETH_DMATXDESC_OWN) != (uint32_t)RESET) {
-        errval = ERR_USE;
+        errval = -1;
         goto error;
     }
 
@@ -327,7 +280,7 @@ static int stm32_eth_arch_low_level_output(uint8_t *payload, int len)
 
         /* Check if the buffer is available */
         if ((DmaTxDesc->Status & ETH_DMATXDESC_OWN) != (uint32_t)RESET) {
-            errval = ERR_USE;
+            errval = -1;
             goto error;
         }
 
@@ -347,7 +300,7 @@ static int stm32_eth_arch_low_level_output(uint8_t *payload, int len)
     /* Prepare transmit descriptors to give to DMA */
     HAL_ETH_TransmitFrame(&EthHandle, framelength);
 
-    errval = ERR_OK;
+    errval = 0;
 
 error:
 
@@ -368,81 +321,70 @@ error:
 
 
 /**
+ * Helper function for `stm32_eth_arch_low_level_input()`
+ */
+static inline void nanostack_rx_call(const uint8_t *data_ptr, uint16_t data_len) {
+    // call Nanostack callback
+    if (eth_device_driver.phy_rx_cb) {
+        tr_debug("%s (%d): len=%d", __func__, __LINE__, data_len);
+        eth_device_driver.phy_rx_cb(data_ptr, data_len, 0xff, 0, eth_interface_id);
+    }
+}
+
+/**
  * Should transfer the bytes of the incoming packet to the buffer passed as param.
  *
- * @note The passed buffer must be at least of size 'ETH_RX_BUF_SIZE'
  * @note This function is NOT thread-safe
  */
-static int stm32_eth_arch_low_level_input(uint8_t *paramBuffer, unsigned int paramLen)
+static int stm32_eth_arch_low_level_input()
 {
     uint16_t len = 0;
-    uint8_t *q;
     uint8_t *buffer;
     __IO ETH_DMADescTypeDef *dmarxdesc;
     uint32_t payloadoffset = 0;
     uint32_t byteslefttocopy = 0;
-    uint32_t i = 0;
-
-    if((paramBuffer == NULL) || (paramLen < ETH_RX_BUF_SIZE)) {
-        tr_debug("%s (%d)", __func__, __LINE__);
-
-        return -1;
-    }
 
     /* get received frame */
     if (HAL_ETH_GetReceivedFrame(&EthHandle) != HAL_OK) {
         tr_debug("%s (%d)", __func__, __LINE__);
-
-        return -2;
+        return -1;
     }
 
     /* Obtain the size of the packet and put it into the "len" variable. */
     len = EthHandle.RxFrameInfos.length;
     buffer = (uint8_t*)EthHandle.RxFrameInfos.buffer;
 
-    if(paramLen < len) {
-        tr_err("%s(%d) - %d, %d: Should never happen in this prototype version of the driver!",
-               __func__, __LINE__,
-               paramLen, len);
-    }
-
-    q = paramBuffer;
     byteslefttocopy = len;
     payloadoffset = 0;
 
-    if((paramBuffer != NULL) && (paramLen >= len)) {
-        dmarxdesc = EthHandle.RxFrameInfos.FSRxDesc;
-        {
-            /* Check if the length of bytes to copy in current pbuf is bigger than Rx buffer size*/
-            while (byteslefttocopy > ETH_RX_BUF_SIZE) {
-                /* Copy data to pbuf */
-                memcpy((uint8_t*)((uint8_t*)q + payloadoffset), (uint8_t*)buffer, ETH_RX_BUF_SIZE);
+    dmarxdesc = EthHandle.RxFrameInfos.FSRxDesc;
+    {
+        /* Check if the length of bytes to copy in current pbuf is bigger than Rx buffer size*/
+        while (byteslefttocopy > ETH_RX_BUF_SIZE) {
+            /* Call nanostack */
+            nanostack_rx_call((const uint8_t*)buffer, ETH_RX_BUF_SIZE);
 
-                /* Point to next descriptor */
-                dmarxdesc = (ETH_DMADescTypeDef*)(dmarxdesc->Buffer2NextDescAddr);
-                buffer = (uint8_t*)(dmarxdesc->Buffer1Addr);
-
-                byteslefttocopy = byteslefttocopy - ETH_RX_BUF_SIZE;
-                payloadoffset = payloadoffset + ETH_RX_BUF_SIZE;
-            }
-
-            /* Copy remaining data in pbuf */
-            memcpy((uint8_t*)((uint8_t*)q + payloadoffset), (uint8_t*)buffer, byteslefttocopy);
-            byteslefttocopy = 0;
-        }
-
-        /* Release descriptors to DMA */
-        /* Point to first descriptor */
-        dmarxdesc = EthHandle.RxFrameInfos.FSRxDesc;
-        /* Set Own bit in Rx descriptors: gives the buffers back to DMA */
-        for (i = 0; i < EthHandle.RxFrameInfos.SegCount; i++) {
+            /* Set Own bit in Rx descriptors: gives the buffers back to DMA */
             dmarxdesc->Status |= ETH_DMARXDESC_OWN;
+
+            /* Point to next descriptor */
             dmarxdesc = (ETH_DMADescTypeDef*)(dmarxdesc->Buffer2NextDescAddr);
+            buffer = (uint8_t*)(dmarxdesc->Buffer1Addr);
+
+            byteslefttocopy = byteslefttocopy - ETH_RX_BUF_SIZE;
+            payloadoffset = payloadoffset + ETH_RX_BUF_SIZE;
         }
 
-        /* Clear Segment_Count */
-        EthHandle.RxFrameInfos.SegCount = 0;
+        /* Call nanostack with remaining data */
+        nanostack_rx_call((const uint8_t*)buffer, byteslefttocopy);
+        byteslefttocopy = 0;
+
+        /* Set Own bit in Rx descriptors: gives the buffers back to DMA */
+        dmarxdesc->Status |= ETH_DMARXDESC_OWN;
     }
+
+    /* Clear Segment_Count */
+    EthHandle.RxFrameInfos.SegCount = 0;
 
     /* When Rx Buffer unavailable flag is set: clear it and resume reception */
     if ((EthHandle.Instance->DMASR & ETH_DMASR_RBUS) != (uint32_t)RESET) {
@@ -465,21 +407,6 @@ static void stm32_eth_arch_enable_interrupts(void)
     HAL_NVIC_SetPriority(ETH_IRQn, 0x7, 0);
     HAL_NVIC_EnableIRQ(ETH_IRQn);
 }
-
-
-/* Main data structure for keeping Eth module data */
-typedef struct Eth_Buf_Data_S {
-    /* Indexes of next RX Buffer descriptor*/
-    uint8_t rx_pos;
-
-    /* Pointer to Buffers themselves */
-    uint8_t rx_buf[ENET_RX_RING_LEN][ETH_RX_BUF_SIZE];
-} Eth_Buf_Data_S;
-
-/* Global Variables */
-static Eth_Buf_Data_S base_DS = {
-        .rx_pos = 0
-};
 
 
 /** \brief  Function to register the ethernet driver to the Nanostack
@@ -546,6 +473,7 @@ static int8_t stm32_eth_phy_tx(uint8_t *data_ptr, uint16_t data_len, uint8_t tx_
     return retval;
 }
 
+
 /* TODO State Control Handling.*/
 static int8_t stm32_eth_phy_interface_state_control(phy_interface_state_e state, uint8_t not_required)
 {
@@ -594,10 +522,13 @@ static int8_t stm32_eth_send(uint8_t *data_ptr, uint16_t data_len)
     // Release lock
     eth_if_unlock();
 
-    return (ret == ERR_OK) ? 0 : -1;
+    return ret;
 }
 
 
+/**
+ * Helper function for `stm32_eth_phy_address_write()`
+ */
 static inline void stm32_set_mac_48bit(uint8_t *ptr) {
     tr_debug("%s (%d), adr0=%x, adr1=%x, adr2=%x, adr3=%x, adr4=%x, adr5=%x",
              __func__, __LINE__,
@@ -635,6 +566,9 @@ static int8_t stm32_eth_phy_address_write(phy_address_type_e address_type, uint8
 }
 
 
+/**
+ * Helper function for `PHY_LinkStatus_Task()`
+ */
 static inline bool stm32_get_link_status() {
     uint32_t status;
     bool ret = false;
@@ -708,24 +642,11 @@ static void eth_if_unlock(void)
  */
 static void enet_rx_task(void)
 {
-    int len;
-
-    uint8_t buf_index = base_DS.rx_pos++;
-    base_DS.rx_pos %= ENET_RX_RING_LEN;
+    int ret;
 
     do {
-        len = stm32_eth_arch_low_level_input(base_DS.rx_buf[buf_index], ETH_RX_BUF_SIZE);
-        if(len > 0) {
-            // call Nanostack callback
-            if (eth_device_driver.phy_rx_cb) {
-                tr_debug("%s (%d): len=%d", __func__, __LINE__, len);
-                eth_device_driver.phy_rx_cb(base_DS.rx_buf[buf_index], len, 0xff, 0, eth_interface_id);
-            }
-        } else {
-            tr_debug("%s(%d)", __func__, __LINE__);
-        }
-    }
-    while(len > 0);
+        ret = stm32_eth_arch_low_level_input();
+    } while(ret > 0);
 }
 
 
@@ -746,8 +667,13 @@ static void Eth_IRQ_Thread(const void *x)
 
         MBED_ASSERT(event.value.signals & SIG_RX);
 
+        // Get lock
         eth_if_lock();
+
+        /* Setup transfer */
         enet_rx_task();
+
+        /* Release lock */
         eth_if_unlock();
     }
 }
