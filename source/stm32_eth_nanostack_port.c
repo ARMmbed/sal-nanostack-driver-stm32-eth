@@ -46,6 +46,7 @@
 #if !defined(STM32_NS_ENET_TX_BUF_NB)
 #define STM32_NS_ENET_TX_BUF_NB       (4)
 #endif
+
 /* Signals for IRQ thread */
 #define SIG_RX  1
 
