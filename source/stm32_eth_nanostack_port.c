@@ -39,10 +39,13 @@
 /* Macro Definitions */
 #define TRACE_GROUP  "Eth"
 #define ENET_ARCH_PHY_ADDRESS         (0x00)
-#define ENET_RX_BUF_NB                (6)
-#define ENET_TX_BUF_NB                (4)
 #define ENET_HDR_LEN                  (14)
-
+#if !defined(STM32_NS_ENET_RX_BUF_NB)
+#define STM32_NS_ENET_RX_BUF_NB       (6)
+#endif
+#if !defined(STM32_NS_ENET_TX_BUF_NB)
+#define STM32_NS_ENET_TX_BUF_NB       (4)
+#endif
 /* Signals for IRQ thread */
 #define SIG_RX  1
 
@@ -78,22 +81,22 @@ static osThreadId eth_irq_thread_id;
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
-static __ALIGN_BEGIN ETH_DMADescTypeDef DMARxDscrTab[ENET_RX_BUF_NB] __ALIGN_END; /* Ethernet Rx DMA Descriptor */
+static __ALIGN_BEGIN ETH_DMADescTypeDef DMARxDscrTab[STM32_NS_ENET_RX_BUF_NB] __ALIGN_END; /* Ethernet Rx DMA Descriptor */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
-static __ALIGN_BEGIN ETH_DMADescTypeDef DMATxDscrTab[ENET_TX_BUF_NB] __ALIGN_END; /* Ethernet Tx DMA Descriptor */
+static __ALIGN_BEGIN ETH_DMADescTypeDef DMATxDscrTab[STM32_NS_ENET_TX_BUF_NB] __ALIGN_END; /* Ethernet Tx DMA Descriptor */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
-static __ALIGN_BEGIN uint8_t Rx_Buff[ENET_RX_BUF_NB][ETH_RX_BUF_SIZE] __ALIGN_END; /* Ethernet Receive Buffer */
+static __ALIGN_BEGIN uint8_t Rx_Buff[STM32_NS_ENET_RX_BUF_NB][ETH_RX_BUF_SIZE] __ALIGN_END; /* Ethernet Receive Buffer */
 
 #if defined (__ICCARM__)   /*!< IAR Compiler */
 #pragma data_alignment=4
 #endif
-static __ALIGN_BEGIN uint8_t Tx_Buff[ENET_TX_BUF_NB][ETH_TX_BUF_SIZE] __ALIGN_END; /* Ethernet Transmit Buffer */
+static __ALIGN_BEGIN uint8_t Tx_Buff[STM32_NS_ENET_TX_BUF_NB][ETH_TX_BUF_SIZE] __ALIGN_END; /* Ethernet Transmit Buffer */
 
 
 /** This returns a unique 6-byte MAC address, based on the unique device ID register
@@ -234,10 +237,10 @@ static void stm32_eth_arch_low_level_init(void)
     }
 
     /* Initialize Tx Descriptors list: Chain Mode */
-    HAL_ETH_DMATxDescListInit(&EthHandle, DMATxDscrTab, &Tx_Buff[0][0], ENET_TX_BUF_NB);
+    HAL_ETH_DMATxDescListInit(&EthHandle, DMATxDscrTab, &Tx_Buff[0][0], STM32_NS_ENET_TX_BUF_NB);
 
     /* Initialize Rx Descriptors list: Chain Mode  */
-    HAL_ETH_DMARxDescListInit(&EthHandle, DMARxDscrTab, &Rx_Buff[0][0], ENET_RX_BUF_NB);
+    HAL_ETH_DMARxDescListInit(&EthHandle, DMARxDscrTab, &Rx_Buff[0][0], STM32_NS_ENET_RX_BUF_NB);
 
     /* Enable MAC and DMA transmission and reception */
     HAL_ETH_Start(&EthHandle);
